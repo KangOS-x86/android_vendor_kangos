@@ -1,4 +1,4 @@
-# Copyright (C) 2018 The LineageOS Project
+# Copyright (C) 2018-2019 The LineageOS Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,33 +53,17 @@ else
 KERNEL_ARCH := $(TARGET_KERNEL_ARCH)
 endif
 
-TARGET_KERNEL_HEADERS ?= $(TARGET_KERNEL_SOURCE)
-
-CLANG_PREBUILTS := $(BUILD_TOP)/prebuilts/clang/host/$(HOST_PREBUILT_TAG)/clang-r383902b
-GCC_PREBUILTS := $(BUILD_TOP)/prebuilts/gcc/$(HOST_PREBUILT_TAG)
-
+CLANG_PREBUILTS := $(BUILD_TOP)/prebuilts/clang/host/$(HOST_OS)-x86/clang-r383902b
+GCC_PREBUILTS := $(BUILD_TOP)/prebuilts/gcc/$(HOST_OS)-x86
+# arm64 toolchain
+KERNEL_TOOLCHAIN_arm64 := $(GCC_PREBUILTS)/aarch64/aarch64-linux-android-4.9/bin
+KERNEL_TOOLCHAIN_PREFIX_arm64 := aarch64-linux-android-
+# arm toolchain
+KERNEL_TOOLCHAIN_arm := $(GCC_PREBUILTS)/arm/arm-linux-androideabi-4.9/bin
+KERNEL_TOOLCHAIN_PREFIX_arm := arm-linux-androidkernel-
 # x86 toolchain
 KERNEL_TOOLCHAIN_x86 := $(GCC_PREBUILTS)/x86/x86_64-linux-android-4.9/bin
 KERNEL_TOOLCHAIN_PREFIX_x86 := x86_64-linux-android-
-
-ifeq ($(TARGET_KERNEL_NEW_GCC_COMPILE),true)
-    ifeq ($(TARGET_KERNEL_CLANG_COMPILE),true)
-        $(error TARGET_KERNEL_NEW_GCC_COMPILE cannot be used with TARGET_KERNEL_CLANG_COMPILE!)
-    endif
-    # arm64 toolchain
-    KERNEL_TOOLCHAIN_arm64 := $(GCC_PREBUILTS)/aarch64/aarch64-elf/bin
-    KERNEL_TOOLCHAIN_PREFIX_arm64 := aarch64-elf-
-    # arm toolchain
-    KERNEL_TOOLCHAIN_arm := $(GCC_PREBUILTS)/arm/arm-eabi/bin
-    KERNEL_TOOLCHAIN_PREFIX_arm := arm-eabi-
-else
-    # arm64 toolchain
-    KERNEL_TOOLCHAIN_arm64 := $(GCC_PREBUILTS)/aarch64/aarch64-linux-android-4.9/bin
-    KERNEL_TOOLCHAIN_PREFIX_arm64 := aarch64-linux-android-
-    # arm toolchain
-    KERNEL_TOOLCHAIN_arm := $(GCC_PREBUILTS)/arm/arm-linux-androideabi-4.9/bin
-    KERNEL_TOOLCHAIN_PREFIX_arm := arm-linux-androidkernel-
-endif
 
 TARGET_KERNEL_CROSS_COMPILE_PREFIX := $(strip $(TARGET_KERNEL_CROSS_COMPILE_PREFIX))
 ifneq ($(TARGET_KERNEL_CROSS_COMPILE_PREFIX),)
@@ -100,15 +84,9 @@ endif
 KERNEL_TOOLCHAIN_PATH_gcc := $(KERNEL_TOOLCHAIN_$(KERNEL_ARCH))/$(KERNEL_TOOLCHAIN_PREFIX_$(KERNEL_ARCH))
 
 ifneq ($(USE_CCACHE),)
-    # Detect if the system already has ccache installed to use instead of the prebuilt
-        ifneq (,$(wildcard $(OUT_DIR)/.path_interposer_origpath))
-	CCACHE_BIN := $(shell PATH=$(shell cat $(OUT_DIR)/.path_interposer_origpath):$$PATH which ccache)
-        endif
-
-    ifeq ($(CCACHE_BIN),)
-        CCACHE_BIN := $(BUILD_TOP)/prebuilts/misc/$(HOST_PREBUILT_TAG)/ccache/ccache
-        # Check that the executable is here.
-        CCACHE_BIN := $(strip $(wildcard $(CCACHE_BIN)))
+    ifneq ($(CCACHE_EXEC),)
+        # Android 10+ deprecates use of a build ccache. Only system installed ones are now allowed
+        CCACHE_BIN := $(CCACHE_EXEC)
     endif
 endif
 
@@ -123,13 +101,14 @@ ifeq ($(KERNEL_ARCH),arm64)
    KERNEL_CROSS_COMPILE += CROSS_COMPILE_ARM32="$(KERNEL_TOOLCHAIN_arm)/$(KERNEL_TOOLCHAIN_PREFIX_arm)"
 endif
 
+prebuilt_build_tools_lineage := prebuilts/tools-lineage
+prebuilt_build_tools_lineage_bin := $(prebuilt_build_tools_lineage)/$(HOST_PREBUILT_TAG)/bin
+
 # Clear this first to prevent accidental poisoning from env
 KERNEL_MAKE_FLAGS :=
 
 # Add back threads, ninja cuts this to $(nproc)/2
-ifneq (,$(wildcard $(OUT_DIR)/.path_interposer_origpath))
-KERNEL_MAKE_FLAGS += -j$(shell PATH=$(shell cat $(OUT_DIR)/.path_interposer_origpath):$$PATH nproc --all)
-endif
+KERNEL_MAKE_FLAGS += -j$(shell $(prebuilt_build_tools_lineage_bin)/nproc --all)
 
 ifeq ($(KERNEL_ARCH),arm)
   # Avoid "Unknown symbol _GLOBAL_OFFSET_TABLE_" errors
@@ -142,20 +121,37 @@ ifeq ($(KERNEL_ARCH),arm64)
 endif
 
 ifeq ($(HOST_OS),darwin)
-  KERNEL_MAKE_FLAGS += C_INCLUDE_PATH=$(BUILD_TOP)/external/elfutils/libelf:/usr/local/opt/openssl/include
-  KERNEL_MAKE_FLAGS += LIBRARY_PATH=/usr/local/opt/openssl/lib
+  KERNEL_MAKE_FLAGS += HOSTCFLAGS="-I$(BUILD_TOP)/external/elfutils/libelf -I/usr/local/opt/openssl/include -fuse-ld=lld" HOSTLDFLAGS="-L/usr/local/opt/openssl/lib -fuse-ld=lld"
+else
+  KERNEL_MAKE_FLAGS += CPATH="/usr/include:/usr/include/x86_64-linux-gnu" HOSTCFLAGS="-fuse-ld=lld" HOSTLDFLAGS="-L/usr/lib/x86_64-linux-gnu -L/usr/lib64 -fuse-ld=lld"
 endif
 
 ifneq ($(TARGET_KERNEL_ADDITIONAL_FLAGS),)
   KERNEL_MAKE_FLAGS += $(TARGET_KERNEL_ADDITIONAL_FLAGS)
 endif
 
+TOOLS_PATH_OVERRIDE := \
+    PATH=$(BUILD_TOP)/$(prebuilt_build_tools_lineage_bin):$$PATH \
+    LD_LIBRARY_PATH=$(BUILD_TOP)/$(prebuilt_build_tools_lineage)/$(HOST_PREBUILT_TAG)/lib:$$LD_LIBRARY_PATH \
+    PERL5LIB=$(BUILD_TOP)/$(prebuilt_build_tools_lineage)/common/perl-base
+
 # Set DTBO image locations so the build system knows to build them
-ifeq ($(TARGET_NEEDS_DTBOIMAGE),true)
-BOARD_PREBUILT_DTBOIMAGE ?= $(PRODUCT_OUT)/dtbo/arch/$(KERNEL_ARCH)/boot/dtbo.img
-else ifeq ($(BOARD_KERNEL_SEPARATED_DTBO),true)
-BOARD_PREBUILT_DTBOIMAGE ?= $(PRODUCT_OUT)/dtbo-pre.img
+ifeq (true,$(filter true, $(TARGET_NEEDS_DTBOIMAGE) $(BOARD_KERNEL_SEPARATED_DTBO)))
+BOARD_PREBUILT_DTBOIMAGE ?= $(TARGET_OUT_INTERMEDIATES)/DTBO_OBJ/arch/$(KERNEL_ARCH)/boot/dtbo.img
 endif
+
+# Set use the full path to the make command
+KERNEL_MAKE_CMD := $(BUILD_TOP)/prebuilts/build-tools/$(HOST_OS)-x86/bin/make
+
+# Set the full path to the clang command
+KERNEL_MAKE_FLAGS += HOSTCC=$(CLANG_PREBUILTS)/bin/clang
+KERNEL_MAKE_FLAGS += HOSTCXX=$(CLANG_PREBUILTS)/bin/clang++
+
+# Since Linux 4.16, flex and bison are required
+KERNEL_MAKE_FLAGS += LEX=$(BUILD_TOP)/prebuilts/build-tools/$(HOST_OS)-x86/bin/flex
+KERNEL_MAKE_FLAGS += YACC=$(BUILD_TOP)/prebuilts/build-tools/$(HOST_OS)-x86/bin/bison
+KERNEL_MAKE_FLAGS += M4=$(BUILD_TOP)/prebuilts/build-tools/$(HOST_OS)-x86/bin/m4
+TOOLS_PATH_OVERRIDE += BISON_PKGDATADIR=$(BUILD_TOP)/prebuilts/build-tools/common/bison
 
 # Set the out dir for the kernel's O= arg
 # This needs to be an absolute path, so only set this if the standard out dir isn't used

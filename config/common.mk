@@ -16,10 +16,6 @@ include vendor/kangos/config/fingerprint.mk
 include vendor/kangos/config/version.mk
 include vendor/themes/common.mk
 
-ifeq ($(TARGET_OPLAUNCHER), true)
-include vendor/oplauncher/OPLauncher.mk
-endif
-
 PRODUCT_ENFORCE_RRO_EXCLUDED_OVERLAYS += vendor/kangos/overlay
 DEVICE_PACKAGE_OVERLAYS += \
     vendor/kangos/overlay/common
@@ -98,12 +94,12 @@ $(foreach f,$(wildcard vendor/kangos/prebuilt/common/etc/init/*.rc),\
 	$(eval PRODUCT_COPY_FILES += $(f):$(TARGET_COPY_OUT_SYSTEM)/etc/init/$(notdir $f)))
 
 # system mount
-PRODUCT_COPY_FILES += \
-    vendor/kangos/prebuilt/common/bin/system-mount.sh:$(TARGET_COPY_OUT_SYSTEM)/install/bin/system-mount.sh
+#PRODUCT_COPY_FILES += \
+#    vendor/kangos/prebuilt/common/bin/system-mount.sh:$(TARGET_COPY_OUT_SYSTEM)/install/bin/system-mount.sh
 
 # Enforce privapp-permissions whitelist
-PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
-    ro.control_privapp_permissions=log
+#PRODUCT_SYSTEM_DEFAULT_PROPERTIES += \
+#    ro.control_privapp_permissions=log
 
 # Do not include art debug targets
 PRODUCT_ART_TARGET_INCLUDE_DEBUG_BUILD := false

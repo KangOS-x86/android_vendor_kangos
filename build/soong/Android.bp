@@ -20,7 +20,7 @@ kangos_generator {
     name: "generated_kernel_includes",
 
     // The headers make command
-    cmd: "PATH=$(ORIG_PATH) make $(KERNEL_MAKE_FLAGS) -C $(TARGET_KERNEL_SOURCE) O=$(KERNEL_BUILD_OUT_PREFIX)$(genDir) ARCH=$(KERNEL_ARCH) $(KERNEL_CROSS_COMPILE) $(KERNEL_CLANG_TRIPLE) $(KERNEL_CC) headers_install",
+    cmd: "$(PATH_OVERRIDE_SOONG) $(KERNEL_MAKE_CMD) $(KERNEL_MAKE_FLAGS) -C $(TARGET_KERNEL_SOURCE) O=$(KERNEL_BUILD_OUT_PREFIX)$(genDir) ARCH=$(KERNEL_ARCH) $(KERNEL_CROSS_COMPILE) headers_install",
 
     // Directories that can be imported by a cc_* module generated_headers property
     export_include_dirs: [
@@ -197,6 +197,23 @@ needs_netd_direct_connect_rule {
     soong_config_variables: {
         needs_netd_direct_connect_rule: {
             cppflags: ["-DNEEDS_NETD_DIRECT_CONNECT_RULE"],
+        },
+    },
+}
+
+soong_config_module_type {
+    name: "legacy_hw_disk_encryption",
+    module_type: "cc_defaults",
+    config_namespace: "kangosQcomVars",
+    bool_variables: ["legacy_hw_disk_encryption"],
+    properties: ["cppflags"],
+}
+
+legacy_hw_disk_encryption {
+    name: "legacy_hw_disk_encryption_defaults",
+    soong_config_variables: {
+        legacy_hw_disk_encryption: {
+            cppflags: ["-DLEGACY_HW_DISK_ENCRYPTION"],
         },
     },
 }
